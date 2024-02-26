@@ -1,0 +1,239 @@
+---
+title: "FML_Assignment_2.0"
+author: "Tejasvin"
+date: "2024-02-25"
+output: html_document
+---
+### Problem Statement
+
+Universal Bank is an emerging financial institution experiencing swift growth in its total customer base.
+
+Most of these clients are depositors, holding accounts of different sizes with the bank. Meanwhile, the segment of borrowers within the customer base is significant.
+
+Limited in size, the bank aims to swiftly enlarge its pool of borrowers, particularly focusing on strategies to transition its depositors into personal loan clients.
+
+Last year's campaign targeting depositors achieved a promising success rate exceeding 9%, inspiring the retail marketing team to develop more refined and targeted campaigns. The objective is to employ k-NN algorithms to forecast if a new customer will accept a loan proposal, guiding the strategy for a forthcoming campaign.
+
+The file named UniversalBank.csv holds information on 5,000 customers, encompassing various customer details. Demographic details (such as age and income) along with the nature of the customer's engagement with the bank (mortgage status, possession of securities accounts, etc.), as well as how the customer reacted to the most recent personal loan offer
+campaign (Personal Loan). Of these 5,000 customers, merely 480 (equating to 9.6%) agreed to the personal loan proposed to them in the previous campaign.
+
+Divide the dataset into a training set (60%) and a validation set (40%).
+
+```{r}
+## Loading all required Libraries. 
+
+library(caret)
+library(class)
+library(readr)
+library(dplyr)
+library(e1071)
+```
+```{r}
+## Loading the Data set in R.
+Universal_Bank <- read.csv("./UniversalBank.csv")
+dim(Universal_Bank)
+t(t(names(Universal_Bank))) # This `t` function transposes the data frame.
+
+```
+Removing the ID and ZIP Code
+```{r}
+## Deleting items like ID and ZIP Code which is not relevant for us.
+Universal_Bank <- Universal_Bank[,-c(1,5)]
+head(Universal_Bank)
+```
+Transforming categorical variables into dummy variables.
+```{r}
+## Changing Education data into factor.
+
+Universal_Bank$Education <- as.factor(Universal_Bank$Education)
+levels(Universal_Bank$Education)
+```
+```{r}
+## Creating dummy variable from Education variable. 
+
+E_Groups <- dummyVars(~., data = Universal_Bank) # This creates the dummy groups.
+
+Universal_Bank_M <- as.data.frame(predict(E_Groups,Universal_Bank))
+head(Universal_Bank_M)
+```
+```{r}
+## To ensure that we get the same sample if we rerun the code multiple times.
+
+set.seed(1)  
+Train_X <- sample(row.names(Universal_Bank_M),0.6*dim(Universal_Bank_M)[1])
+Valid_X <- setdiff(row.names(Universal_Bank_M), Train_X)  
+Train_Different <- Universal_Bank_M[Train_X,]
+Valid_Different <- Universal_Bank_M[Valid_X,]
+t(t(names(Train_Different)))
+```
+```{r}
+## Dividing the data set into training (60%) and validation (40%) subsets.
+
+library(caTools)
+set.seed(1)
+Split_X <- sample.split(Universal_Bank_M, SplitRatio = 0.6)
+Training_Sets <- subset(Universal_Bank_M, Split_X == TRUE)
+Validation_Sets <- subset(Universal_Bank_M, Split_X == FALSE)
+
+## Print the sizes of the training and validation sets to validate.
+
+print(paste("The size of the training set is:", nrow(Training_Sets)))
+print(paste("The size of the validation set is:", nrow(Validation_Sets)))
+```
+Now, let us normalize the data
+```{r}
+Train_Norm_Different <- Train_Different[,-10] ## Personal Income is the 10th variable.
+
+Valid_Norm_Different <- Valid_Different[,-10]
+
+Norm_Values_X <- preProcess(Train_Different[, -10], method=c("center", "scale"))
+Train_Norm_Different <- predict(Norm_Values_X, Train_Different[, -10])
+Valid_Norm_Different <- predict(Norm_Values_X, Valid_Different[, -10])
+```
+
+### Questions 
+
+Question 1. Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1, and Credit Card = 1. Perform a k-NN classification with all predictors except ID and ZIP code using k = 1. Remember to transform categorical predictors with more than two categories into dummy variables first. Specify the success class as 1 (loan acceptance), and use the default cutoff value of 0.5. How would this customer be classified?
+
+```{r}
+## Creating a new sample with given customer details.
+
+New_Cust_X <- data.frame(Age = 40, 
+                           Experience = 10,
+                           Income = 84,
+                           Family = 2,
+                           CCAvg = 2,
+                           Education.1 = 0,
+                           Education.2 = 1,
+                           Education.3 = 0,
+                           Mortgage = 0,
+                           Securities.Account = 0,
+                           CD.Account = 0,
+                           Online = 1,
+                           CreditCard = 1)
+
+## Normalize the new customer data.
+
+New_Cust_X_Normalized <- New_Cust_X
+New_Cust_X_Normalized <- predict(Norm_Values_X, New_Cust_X_Normalized)
+```
+```{r}
+## Predicting using kNN model.
+
+Knn_Prediction_1 <- class::knn(train = Train_Norm_Different, 
+                       test = New_Cust_X_Normalized, 
+                       cl = Train_Different$Personal.Loan, k = 1)
+Knn_Prediction_1
+```
+
+Question 2. What is a choice of k that balances between over fitting and ignoring the predictor information?
+
+```{r}
+## Calculate the accuracy for each value of k to find the best k.
+## Setting the range of k values to consider.
+
+Accuracy_Different <- data.frame(k = seq(1, 15, 1), overallaccuracy = rep(0, 15))
+for(i in 1:15) {
+  Knn_Prediction_1 <- class::knn(train = Train_Norm_Different, 
+                         test = Valid_Norm_Different, 
+                         cl = Train_Different$Personal.Loan, k = i)
+  Accuracy_Different[i, 2] <- confusionMatrix(Knn_Prediction_1, as.factor(Valid_Different$Personal.Loan),positive = "1")$overall[1]
+}
+
+which(Accuracy_Different[,2] == max(Accuracy_Different[,2])) 
+
+plot(Accuracy_Different$k,Accuracy_Different$overallaccuracy)
+```
+
+Question 3. Show the confusion matrix for the validation data that results from using the best k.
+
+```{r}
+Knn_Prediction_2 <- class::knn(train = Train_Norm_Different, 
+                        test = Valid_Norm_Different, 
+                        cl = Train_Different$Personal.Loan, k = 3)
+
+confusionMatrix(Knn_Prediction_2,as.factor(Valid_Different$Personal.Loan))
+```
+
+Question 4. Consider the following customer: Age = 40, Experience = 10, Income = 84, Family = 2, CCAvg = 2, Education_1 = 0, Education_2 = 1, Education_3 = 0, Mortgage = 0, Securities Account = 0, CD Account = 0, Online = 1 and Credit Card = 1. Classify the customer using the best k.
+
+```{r}
+## Classifying the customer using the best K which is '3' found by above step.
+New_Cust_Y = data.frame(Age = 40, 
+                           Experience = 10, 
+                           Income = 84, 
+                           Family = 2,
+                           CCAvg = 2, 
+                           Education.1 = 0, 
+                           Education.2 = 1, 
+                           Education.3 = 0, 
+                           Mortgage = 0, 
+                           Securities.Account = 0, 
+                           CD.Account = 0, 
+                           Online = 1, 
+                           CreditCard = 1)
+
+Knn_Prediction_3 <- class::knn(train = Train_Norm_Different, 
+                         test = New_Cust_Y, 
+                         cl = Train_Different$Personal.Loan, k = 3)
+Knn_Prediction_3
+
+## The customer has been categorized as eligible for a personal loan.
+
+```
+
+Question 5.Repartition the data, this time into training, validation, and test sets (50% : 30% : 20%). Apply the k-NN method with the k chosen above. Compare the confusion matrix of the test set with that of the training and validation sets. Comment on the differences and their reason.
+
+```{r}
+set.seed(2)
+
+##Take 50% of the entire modified data as Training data.
+
+Train_Different_2 = sample(row.names(Universal_Bank_M),0.5*dim(Universal_Bank_M)[1])
+
+## Take 30% of the data from the remaining 50% as Validation Data.
+
+Valid_Different_2 = sample(setdiff(row.names(Universal_Bank_M), Train_Different_2), 0.3*dim(Universal_Bank_M)[1])
+
+## Take remaining 20% of the modified data as Test Data.
+
+Test_Different_2 = setdiff(row.names(Universal_Bank_M),union(Train_Different_2,Valid_Different_2))
+
+Train_Norm_Different_2 = Universal_Bank_M[Train_Different_2,]
+Valid_Norm_Different_2 = Universal_Bank_M[Valid_Different_2,]
+Test_Norm_Different_2 = Universal_Bank_M[Test_Different_2,]
+
+## Transposing the data.
+
+t(t(names(Train_Norm_Different_2)))
+
+
+## Applying the kNN method with the chosen K.
+
+Train_Knn_2 = knn(train = Train_Norm_Different_2[,-8], test = Train_Norm_Different_2[,-8], cl = Train_Norm_Different_2[,8], k=3)
+
+Valid_Knn_2 = knn(train = Train_Norm_Different_2[,-8], test = Valid_Norm_Different_2[,-8], cl = Train_Norm_Different_2[,8], k=3)
+
+Test_Knn_2 = knn(train = Train_Norm_Different_2[,-8], test = Test_Norm_Different_2[,-8], cl = Train_Norm_Different_2[,8], k=3)
+```
+### Comparing the confusion matrix of the training set, validation sets and test set
+
+```{r}
+Confusionmatrix_Train_Knn_2 = confusionMatrix(Train_Knn_2, as.factor(Train_Norm_Different_2$Personal.Loan),positive = "1")
+
+Confusionmatrix_Train_Knn_2
+
+Confusionmatrix_Valid_Knn_2 = confusionMatrix(Valid_Knn_2, as.factor(Valid_Norm_Different_2$Personal.Loan),positive = "1")
+
+Confusionmatrix_Train_Knn_2
+
+
+Confusionmatrix_Test_Knn_2 = confusionMatrix(Test_Knn_2, as.factor(Test_Norm_Different_2$Personal.Loan),positive = "1")
+
+Confusionmatrix_Train_Knn_2
+```
+
+After dividing the data into training, validation, and test sets, apply the k-NN algorithm to the test set. Then, compare the confusion matrix results from the test set with those from the training and validation sets.
+
+Variations in the confusion matrices for the test set relative to those of the training and validation sets might arise from several factors, including overfitting, variability in the data, differences in sample size, and randomness.
+
